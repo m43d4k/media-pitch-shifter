@@ -1,49 +1,65 @@
 # media-pitch-shifter
 
-macOS で、動画や音声の再生速度と尺を保ったまま、選択した音声トラックのピッチを変える。ローカルファイルと YouTube 動画を GUI と CLI で扱える。
+動画・音声のピッチを、再生速度と長さを変えずに変更する macOS 用ツール。ローカルファイルと YouTube 動画に対応。
 
 ## 使い方
+
+### GUI
+
+1. 「ファイル」タブに動画・音声をドロップするか、「YouTube」タブで URL と保存先を指定してダウンロードする。
+2. 「Pitch (st)」に半音数を入力する（例：`-2.5`）。フォルマント保持や音声トラックも設定できる。
+3. 「変換」を押す。結果は元ファイルと同じフォルダに保存される（例：`song.mp4` → `song_shift.mp4`）。
 
 ### CLI
 
 ```sh
+# ローカルファイル
 uv run pitch_shift.py input.mp4 output.mp4 -p -2.5 --audio-track 0 -F
-```
 
-`-p` に半音数を指定する。たとえば `-2.5` で 2.5 半音下がる。`--audio-track` は 0 始まりで、省略時は最初の音声トラックを使う。`-F` でフォルマントを保持する。出力先には、既存のフォルダ内で使われていないファイル名を指定する。
-
-YouTube 動画を変換するときは、入力に URL を引用符で囲んで指定する。指定した出力先に変換結果を保存する。
-
-```sh
+# YouTube
 uv run pitch_shift.py "https://www.youtube.com/watch?v=VIDEO_ID" output.mp4 -p -2.5 -F
 ```
 
-### GUI
+- `-p`：変更する半音数
+- `--audio-track`：音声トラック番号（0 始まり、既定は 0）
+- `-F`：フォルマント保持
 
-- ローカルファイルを使うときは、「ファイル」タブに Finder から動画または音声ファイルを 1 つドロップする。
-- YouTube 動画を使うときは、「YouTube」タブの「YouTube URL」にリンクを貼り付ける。「ダウンロード先」の「選択…」でフォルダを指定し、「ダウンロード」を押す。動画は `動画タイトル [動画ID].mp4` として保存され、自動的に変換対象になる。
+出力には既存のファイル名を指定できない。
 
-「Pitch (st)」で半音数を指定する。「出力形式」が表示された場合は形式を選ぶ。音声トラックが複数ある場合は「音声トラック」で対象を変えられる。「変換」を押すと、結果は元ファイルと同じフォルダに保存される。たとえば `song.mp4` を初期設定の「Postfix」で変換すると `song_shift.mp4` になる。
+## セットアップ
 
-## 初回セットアップ
+必要環境：macOS、`uv`、FFmpeg（`ffmpeg`・`ffprobe`）、Deno 2.3 以降。
 
-`uv`、`ffmpeg`、`ffprobe`、`rubberband` が必要。YouTube 動画の取得には Deno 2.3 以降も必要。`yt-dlp` と YouTube の JavaScript チャレンジに必要なスクリプトは環境の同期時に入る。 [yt-dlp の JavaScript セットアップガイド](https://github.com/yt-dlp/yt-dlp/wiki/EJS)
+### 依存ライブラリのインストール
 
 ```sh
-uv sync --python 3.12
+uv sync
 ```
 
-Rubber Band 4.0.0 の公式 CLI を使う場合は、環境の同期後に `rubberband` を `.venv/bin/` に置く。 [Rubber Band 公式配布ページ](https://breakfastquay.com/rubberband/)
+### Rubber Band のインストール
 
-### Finder から GUI を起動する
+公式配布から Rubber Band 4.0.0 の macOS 用 CLI を取得し、`.venv/bin/rubberband` に配置する。[Rubber Band 公式配布ページ](https://breakfastquay.com/rubberband/)
+
+```sh
+# ダウンロード・展開
+tmp=$(mktemp -d)
+curl -fsSL https://breakfastquay.com/files/releases/rubberband-4.0.0-gpl-executable-macos.tar.bz2 -o "$tmp/rubberband.tar.bz2"
+tar -xjf "$tmp/rubberband.tar.bz2" -C "$tmp"
+
+# インストール・後片付け
+install -m 755 "$tmp/rubberband-4.0.0-gpl-executable-macos/rubberband" .venv/bin/rubberband
+rm -rf "$tmp"
+```
+
+### アプリ化
 
 ```sh
 uv run python setup.py py2app -A
 ```
 
-Finder で `dist/Media Pitch Shifter.app` をダブルクリックする。Python ソースを変更した場合はアプリを開き直す。
+出力先：`dist/Media Pitch Shifter.app`
 
 ## 関連ドキュメント
 
-- 入力・出力形式、保存と上書き、音声処理の詳細。 [仕様書](SPEC.md)
-- 開発環境の扱いと回帰テストの実行方法。 [プロジェクトの作業ルール](AGENTS.md)
+- [仕様書](SPEC.md)：対応形式、保存・上書き、音声処理
+- [作業ルール](AGENTS.md)：開発環境、回帰テスト

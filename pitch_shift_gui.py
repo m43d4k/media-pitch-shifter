@@ -6,18 +6,20 @@ from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import QStandardPaths, QThread, Qt
+from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -60,23 +62,23 @@ class Window(QWidget):
         self.setAcceptDrops(True)
         self.setMinimumWidth(460)
 
-        self.drop_area = QLabel(DROP_HINT)
-        self.drop_area.setTextFormat(Qt.TextFormat.PlainText)
-        self.drop_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.drop_area.setFrameShape(QFrame.Shape.StyledPanel)
-        self.drop_area.setWordWrap(True)
-        self.drop_area.setMinimumHeight(80)
+        drop_area = QLabel(DROP_HINT)
+        drop_area.setTextFormat(Qt.TextFormat.PlainText)
+        drop_area.setForegroundRole(QPalette.ColorRole.PlaceholderText)
+        drop_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        drop_area.setWordWrap(True)
+        drop_area.setMinimumHeight(80)
+        self.drop_tab = QWidget()
+        drop_layout = QVBoxLayout(self.drop_tab)
+        drop_layout.addWidget(drop_area)
 
         self.youtube_url = QLineEdit()
         self.youtube_url.setPlaceholderText("https://www.youtube.com/watch?v=…")
-        self.download = QPushButton("yt-dlpで取得")
+        self.download = QPushButton("ダウンロード")
         self.download.setEnabled(False)
         self.download.clicked.connect(self.download_video)
         self.youtube_url.textChanged.connect(self.update_download_button)
         self.youtube_url.returnPressed.connect(self.download_video)
-        youtube_row = QHBoxLayout()
-        youtube_row.addWidget(self.youtube_url, stretch=1)
-        youtube_row.addWidget(self.download)
 
         self.download_folder = QLineEdit()
         self.download_folder.setReadOnly(True)
@@ -87,6 +89,30 @@ class Window(QWidget):
         download_folder_row.addWidget(self.download_folder, stretch=1)
         download_folder_row.addWidget(self.choose_folder)
 
+        download_button_row = QHBoxLayout()
+        download_button_row.addStretch()
+        download_button_row.addWidget(self.download)
+        download_button_row.addStretch()
+
+        youtube_tab = QWidget()
+        youtube_form = QFormLayout(youtube_tab)
+        youtube_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+        youtube_form.setHorizontalSpacing(10)
+        youtube_form.setVerticalSpacing(5)
+        youtube_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        youtube_form.addRow("YouTube URL", self.youtube_url)
+        youtube_form.addRow("ダウンロード先", download_folder_row)
+        youtube_form.addRow(download_button_row)
+
+        for page_layout, top_margin in ((drop_layout, 5), (youtube_form, 12)):
+            margins = page_layout.contentsMargins()
+            page_layout.setContentsMargins(margins.left(), top_margin, margins.right(), 5)
+
+        self.input_tabs = QTabWidget()
+        self.input_tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        self.input_tabs.addTab(self.drop_tab, "ファイル")
+        self.input_tabs.addTab(youtube_tab, "YouTube")
+
         self.semitones = QLineEdit("0")
         self.semitones.setPlaceholderText("例：-2.5")
         self.postfix = QLineEdit("shift")
@@ -96,19 +122,24 @@ class Window(QWidget):
         self.formants = QCheckBox()
         self.formants.setChecked(True)
 
-        self.form = QFormLayout()
+        pitch_settings = QWidget()
+        self.form = QFormLayout(pitch_settings)
+        self.form.setContentsMargins(0, 0, 0, 0)
+        self.form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.form.setHorizontalSpacing(10)
-        self.form.addRow("YouTube URL", youtube_row)
-        self.form.addRow("ダウンロード先", download_folder_row)
+        self.form.setHorizontalSpacing(48)
         self.form.addRow("Pitch (st)", self.semitones)
-        self.form.addRow("Postfix", self.postfix)
+        self.form.addRow("フォルマントを保持", self.formants)
         self.form.addRow("出力形式", self.output_format)
         self.form.addRow("音声トラック", self.tracks)
-        self.form.addRow("フォルマントを保持", self.formants)
+        self.form.addRow("Postfix", self.postfix)
         self.form.setRowVisible(self.output_format, False)
         self.form.setRowVisible(self.tracks, False)
 
+        self.source_label = QLabel()
+        self.source_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.source_label.setWordWrap(True)
+        self.source_label.hide()
         self.status = QLabel()
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
@@ -120,14 +151,18 @@ class Window(QWidget):
         self.output_format.currentIndexChanged.connect(self.update_convert_button)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(self.drop_area)
-        layout.addLayout(self.form)
+        layout.addWidget(self.input_tabs)
+        layout.addSpacing(14)
+        layout.addWidget(self.source_label)
+        layout.addWidget(pitch_settings, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(self.status)
         layout.addWidget(self.convert, alignment=Qt.AlignmentFlag.AlignRight)
 
     def drop_path(self, event):
+        if self.job is not None or self.input_tabs.currentWidget() is not self.drop_tab:
+            return None
         urls = event.mimeData().urls()
-        if self.job is None and len(urls) == 1 and urls[0].isLocalFile():
+        if len(urls) == 1 and urls[0].isLocalFile():
             return Path(urls[0].toLocalFile())
         return None
 
@@ -143,11 +178,12 @@ class Window(QWidget):
         event.setDropAction(Qt.DropAction.CopyAction)
         event.accept()
         self.clear_media()
-        self.drop_area.setText(path.name)
         self.start_job(partial(inspect_media, path), partial(self.load_media, path), "入力ファイルを確認中…")
 
     def clear_media(self):
         self.source = None
+        self.source_label.clear()
+        self.source_label.hide()
         self.tracks.clear()
         self.form.setRowVisible(self.tracks, False)
         self.output_format.clear()
@@ -204,7 +240,8 @@ class Window(QWidget):
             self.output_format.addItems(list(media.output_codecs))
             self.output_format.setCurrentIndex(-1)
         self.form.setRowVisible(self.output_format, needs_format)
-        self.drop_area.setText(path.name)
+        self.source_label.setText(f"入力ファイル：{path.name}")
+        self.source_label.show()
         self.status.clear()
         self.source = path
 
@@ -293,8 +330,6 @@ class Window(QWidget):
         if job.error is None:
             job.on_success(job.result)
         else:
-            if self.source is None:
-                self.drop_area.setText(DROP_HINT)
             self.show_error(job.error)
         self.update_convert_button()
 

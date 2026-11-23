@@ -126,7 +126,48 @@ def youtube_video_url(url):
     return f"https://www.youtube.com/watch?v={video_id}"
 
 
-def download_youtube(url, folder):
+def run_youtube_download(url, options, on_progress):
+    options = (*options, "--check-formats", "--output", "video.%(ext)s")
+    if on_progress is None:
+        run_command("yt-dlp", *options, "--", url)
+        return
+
+    last_update = None
+
+    def report(line):
+        nonlocal last_update
+        match line.split():
+            case ["media-pitch-download", ("downloading" | "finished") as status, video, audio, downloaded, total]:
+                if audio == "none":
+                    stage = "映像をダウンロード中"
+                elif video == "none":
+                    stage = "音声をダウンロード中"
+                else:
+                    stage = "動画をダウンロード中"
+                percent = None
+                if status == "finished":
+                    percent = 99
+                elif downloaded.isdecimal() and total.isdecimal() and int(total) > 0:
+                    percent = min(99, 100 * int(downloaded) // int(total))
+            case ["media-pitch-postprocess", "Merger" | "VideoRemuxer", "started"]:
+                stage, percent = "MP4を作成中", None
+            case _:
+                return
+        update = stage, percent
+        if update != last_update:
+            last_update = update
+            on_progress(*update)
+
+    run_progress_command(
+        "yt-dlp", *options, "--progress", "--newline", "--progress-delta", "0.25",
+        "--progress-template", "download:media-pitch-download %(progress.status)s %(info.vcodec)s %(info.acodec)s "
+        "%(progress.downloaded_bytes)s %(progress.total_bytes)s",
+        "--progress-template", "postprocess:media-pitch-postprocess %(progress.postprocessor)s %(progress.status)s",
+        "--", url, on_line=report,
+    )
+
+
+def download_youtube(url, folder, *, on_progress=None):
     url = youtube_video_url(url)
     folder = folder.absolute()
     if not folder.is_dir():
@@ -158,7 +199,7 @@ def download_youtube(url, folder):
             raise ValueError(collision)
 
         # Keep the checked destination even if YouTube changes the title during the download.
-        run_command("yt-dlp", *options, "--check-formats", "--output", "video.%(ext)s", "--", url)
+        run_youtube_download(url, options, on_progress)
         source = staging / f"video.{container}"
         if not source.is_file():
             raise ValueError("yt-dlp が取得した動画ファイルを確認できません")

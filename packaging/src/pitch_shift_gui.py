@@ -55,7 +55,7 @@ class Job(QThread):
 
 
 class Window(QWidget):
-    conversion_progress = Signal(str, object)
+    job_progress = Signal(str, object)
 
     def __init__(self):
         super().__init__()
@@ -146,9 +146,9 @@ class Window(QWidget):
         self.status = QLabel()
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
-        self.conversion_progress.connect(self.show_conversion_progress)
+        self.job_progress.connect(self.show_job_progress)
         self.progress = QProgressBar()
-        self.progress.setAccessibleName("変換の進捗")
+        self.progress.setAccessibleName("処理の進捗")
         self.progress.setTextVisible(False)
         self.progress.hide()
         self.convert = QPushButton("変換")
@@ -224,16 +224,17 @@ class Window(QWidget):
             return
 
         def fetch_video():
-            path = download_youtube(url, Path(folder))
+            path = download_youtube(url, Path(folder), on_progress=self.job_progress.emit)
+            self.job_progress.emit("取得した動画を確認中", None)
             return path, inspect_media(path)
 
-        self.start_job(fetch_video, self.load_download, "YouTube 動画を取得中…")
+        self.start_job(fetch_video, self.load_download, "ダウンロードを準備中…", show_progress=True)
 
     def load_download(self, result):
         path, media = result
         self.clear_media()
         self.load_media(path, media)
-        self.status.setText(f"YouTube 動画を取得しました：{path}")
+        self.finish_progress(f"ダウンロード完了：{path}")
 
     def load_media(self, path, media):
         for index, track in enumerate(media.audio_tracks):
@@ -316,12 +317,12 @@ class Window(QWidget):
 
         operation = partial(
             shift, self.source, output, semitones, self.tracks.currentIndex(),
-            self.formants.isChecked(), replace_existing=existing, on_progress=self.conversion_progress.emit,
+            self.formants.isChecked(), replace_existing=existing, on_progress=self.job_progress.emit,
         )
         self.start_job(operation, partial(self.saved, output), "変換を準備中…", show_progress=True)
 
     @Slot(str, object)
-    def show_conversion_progress(self, stage, percent):
+    def show_job_progress(self, stage, percent):
         if percent is None:
             self.progress.setRange(0, 0)
             self.status.setText(f"{stage}…")
@@ -331,9 +332,12 @@ class Window(QWidget):
             self.status.setText(f"{stage} {percent}%")
 
     def saved(self, output, _result):
+        self.finish_progress(f"変換完了：{output.name} を保存しました")
+
+    def finish_progress(self, message):
         self.progress.setRange(0, 100)
         self.progress.setValue(100)
-        self.status.setText(f"変換完了：{output.name} を保存しました")
+        self.status.setText(message)
 
     def start_job(self, operation, on_success, message, *, show_progress=False):
         self.job = Job(operation, on_success, self)

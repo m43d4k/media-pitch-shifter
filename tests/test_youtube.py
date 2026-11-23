@@ -34,6 +34,42 @@ class YouTubeTest(unittest.TestCase):
         self.assertEqual(path.read_bytes(), b"downloaded media")
         self.assertEqual(list(self.folder.iterdir()), [path])
 
+    def test_reports_separate_transfers_and_mp4_creation_before_saving(self):
+        output = self.folder / FILENAME
+        updates = []
+
+        def report(stage, percent):
+            self.assertFalse(output.exists())
+            updates.append((stage, percent))
+
+        def stream_download(command, *options, on_line):
+            self.assertIn("--check-formats", options)
+            for line in (
+                "[info] Testing format 137",
+                "media-pitch-download downloading avc1.640028 none 30 100",
+                "media-pitch-download downloading avc1.640028 none 30 100",
+                "media-pitch-download finished avc1.640028 none 100 100",
+                "media-pitch-download downloading none mp4a.40.2 10 NA",
+                "media-pitch-download downloading none mp4a.40.2 20 80",
+                "media-pitch-postprocess Merger started",
+                "media-pitch-postprocess VideoRemuxer started",
+                "media-pitch-postprocess MoveFiles finished",
+            ):
+                on_line(line)
+            self.simulate_download(command, *options)
+
+        with (
+            patch.object(pitch_shift, "run_command", side_effect=self.simulate_download),
+            patch.object(pitch_shift, "run_progress_command", side_effect=stream_download),
+        ):
+            self.assertEqual(pitch_shift.download_youtube(WATCH_URL, self.folder, on_progress=report), output)
+
+        self.assertEqual(output.read_bytes(), b"downloaded media")
+        self.assertEqual(updates, [
+            ("映像をダウンロード中", 30), ("映像をダウンロード中", 99),
+            ("音声をダウンロード中", None), ("音声をダウンロード中", 25), ("MP4を作成中", None),
+        ])
+
     def test_refuses_non_video_urls(self):
         urls = (
             "https://youtube.com/playlist?list=PLexample",

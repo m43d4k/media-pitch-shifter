@@ -11,7 +11,7 @@ from pathlib import Path
 import pitch_shift
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "pitch_shift.py"
+SCRIPT = Path(pitch_shift.__file__).resolve()
 SAMPLE_RATE = 48_000
 SAMPLE_COUNT = SAMPLE_RATE + 137
 

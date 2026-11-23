@@ -1,14 +1,45 @@
 # media-pitch-shifter
 
-動画・音声のピッチを、再生速度と長さを変えずに変更する macOS 用ツール。ローカルファイルと YouTube 動画に対応。
+動画・音声の再生速度と長さを変えずに、ピッチを変更するmacOS用ツール。ローカルファイルとYouTube動画に対応。
 
-## 使い方
+## macOSアプリ
 
-### GUI
+[GitHub Releases](https://github.com/m43d4k/media-pitch-shifter/releases)で配布用ビルドキットを公開。ビルド手順と操作方法は同梱のREADMEを参照。
 
-1. 「ファイル」タブに動画・音声をドロップするか、「YouTube」タブで URL と保存先を指定してダウンロードする。
-2. 「Pitch (st)」に半音数を入力する（例：`-2.5`）。フォルマント保持や音声トラックも設定できる。
-3. 「変換」を押す。結果は元ファイルと同じフォルダに保存される（例：`song.mp4` → `song_shift.mp4`）。
+## GUIの使い方
+
+1. 変換する素材を指定する。
+   - ファイル：「ファイル」タブに動画・音声をドロップする。
+   - YouTube：「YouTube」タブでURLと保存先を指定してダウンロードする。取得した動画はそのまま変換対象になる。
+2. 「Pitch (st)」でピッチの変化量を半音単位で指定する。フォルマント保持も設定できる。
+3. 「変換」を押す。変換されたファイルは元ファイルと同じフォルダに保存され、既定ではファイル名に `_shift` が付与される。
+
+## 開発環境
+
+必要環境：macOS、`uv`、FFmpeg（`ffmpeg`・`ffprobe`）、Deno 2.3以降。
+
+### Python依存ライブラリ
+
+```sh
+uv sync
+```
+
+### Rubber Band
+
+公式配布のRubber Band 4.0.0 macOS用CLIを `.venv/bin/rubberband` に配置する。
+
+[Rubber Band公式サイト](https://breakfastquay.com/rubberband/)
+
+```sh
+# ダウンロード・展開
+tmp=$(mktemp -d)
+curl -fsSL https://breakfastquay.com/files/releases/rubberband-4.0.0-gpl-executable-macos.tar.bz2 -o "$tmp/rubberband.tar.bz2"
+tar -xjf "$tmp/rubberband.tar.bz2" -C "$tmp"
+
+# 配置・後片付け
+install -m 755 "$tmp/rubberband-4.0.0-gpl-executable-macos/rubberband" .venv/bin/rubberband
+rm -rf "$tmp"
+```
 
 ### CLI
 
@@ -21,43 +52,24 @@ uv run pitch_shift.py "https://www.youtube.com/watch?v=VIDEO_ID" output.mp4 -p -
 ```
 
 - `-p`：変更する半音数
-- `--audio-track`：音声トラック番号（0 始まり、既定は 0）
+- `--audio-track`：音声トラック番号（0始まり、既定は0）
 - `-F`：フォルマント保持
 
-出力には既存のファイル名を指定できない。
+既存ファイルへの上書きは不可。
 
-## セットアップ
+### GUIアプリのビルド（開発用）
 
-必要環境：macOS、`uv`、FFmpeg（`ffmpeg`・`ffprobe`）、Deno 2.3 以降。
-
-### 依存ライブラリのインストール
-
-```sh
-uv sync
-```
-
-### Rubber Band のインストール
-
-公式配布から Rubber Band 4.0.0 の macOS 用 CLI を取得し、`.venv/bin/rubberband` に配置する。[Rubber Band 公式配布ページ](https://breakfastquay.com/rubberband/)
-
-```sh
-# ダウンロード・展開
-tmp=$(mktemp -d)
-curl -fsSL https://breakfastquay.com/files/releases/rubberband-4.0.0-gpl-executable-macos.tar.bz2 -o "$tmp/rubberband.tar.bz2"
-tar -xjf "$tmp/rubberband.tar.bz2" -C "$tmp"
-
-# インストール・後片付け
-install -m 755 "$tmp/rubberband-4.0.0-gpl-executable-macos/rubberband" .venv/bin/rubberband
-rm -rf "$tmp"
-```
-
-### アプリ化
+py2appのエイリアスモードを使用する。
 
 ```sh
 uv run python setup.py py2app -A
 ```
 
 出力先：`dist/Media Pitch Shifter.app`
+
+## リリース
+
+`packaging/`をZIP化し、GitHub Releaseに添付する。
 
 ## 関連ドキュメント
 

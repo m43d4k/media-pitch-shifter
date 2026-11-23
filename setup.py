@@ -12,11 +12,11 @@ class BuildApp(py2app):
 
 setup(
     packages=[],
-    app=["pitch_shift_gui.py"],
+    app=["packaging/src/pitch_shift_gui.py"],
     cmdclass={"py2app": BuildApp},
     options={
         "py2app": {
-            "iconfile": "assets/AppIcon.icns",
+            "iconfile": "packaging/src/assets/AppIcon.icns",
             "plist": {
                 "CFBundleIdentifier": "local.media-pitch-shifter",
                 "CFBundleName": "Media Pitch Shifter",

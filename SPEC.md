@@ -94,14 +94,35 @@ GUI・CLIともに、正の半音数でピッチを上げ、負の半音数で�
 ## 実行環境
 
 - GUIとCLIは共通のPython変換処理を使う。Rubber Bandの検証基準は4.0.0。[公式配布ページ](https://breakfastquay.com/rubberband/)
-- 外部コマンドは `PATH` → Python環境の `bin` → `.venv/bin` → `/opt/homebrew/bin` → `/usr/local/bin` の順に探索する。見つけたFFmpegとDenoのパスを `yt-dlp` に渡す。
-- py2appのエイリアスモードで作る `.app` は、プロジェクトのPythonソースと仮想環境を参照する。[セットアップ](README.md#セットアップ)
+- 配布用アプリは内蔵の外部コマンドを使う。[配布用ビルド（GitHub Releases）](https://github.com/m43d4k/media-pitch-shifter/releases)
+- ソースから実行するときと開発用のエイリアスモードでは、外部コマンドは `PATH` → Python環境の `bin` → リポジトリ直下の `.venv/bin` → `/opt/homebrew/bin` → `/usr/local/bin` の順に探索する。見つけたFFmpegとDenoのパスを `yt-dlp` に渡す。
+
+## ビルドと配布
+
+開発と配布で同じソースを使う。`packaging/src/` に `pitch_shift_gui.py`、`pitch_shift.py`、`assets/AppIcon.icns`、`pyproject.toml`、`uv.lock` を置き、ここを `uv` のプロジェクトとする。
+
+### 開発用ビルド
+
+リポジトリルートの `setup.py` は `packaging/src/` のGUIとアイコンを参照する。ルートから `uv run python setup.py py2app -A` を実行してエイリアス版を作る。エイリアス版は開発中のソースと仮想環境を参照し、Pythonソースの変更はアプリの再起動で反映される。[セットアップ](README.md#セットアップ)
+
+### 配布用ビルド
+
+- `git archive` でリリース対象コミットの `packaging/` をZIPにまとめ、GitHub Releaseに添付する。ZIPには配布用の `README.md`、`build-macos.sh`、`macos-build.conf`、`src/` が入る。
+- Apple Silicon搭載のmacOS 14以降のMacでZIPを展開し、同梱の `build-macos.sh` を実行する。スクリプトは隣の `src/` とそのロックファイルを使い、PyInstallerで `dist/` 以下に `Media Pitch Shifter.app` を作る。
+- Pythonのバージョンは `macos-build.conf` で指定する。ビルドに必要な依存関係と外部ツールはビルド時に取得し、スクリプトが取得するツールのアーカイブは設定されたSHA-256で検証する。
 
 ## 受け入れ基準
 
-回帰テストの実行方法は [AGENTS.md](AGENTS.md#検証) に記載する。次の項目はGUIや再生で確認する。
+回帰テストの実行方法は [AGENTS.md](AGENTS.md#検証) に記載する。
 
-- Finderから `.app` を起動し、初期表示が「ファイル」タブで「フォルマントを保持」がオンになっていることを確認する。ファイルをドロップして読み込み、タブを切り替えても対象と設定が維持されることを確認する。ソース変更後に `.app` を開き直すと変更が反映される。
+### ビルド
+
+- 開発用のエイリアス版を作り、`packaging/src/` のPythonソースを編集した後、アプリの再起動で変更が反映されることを確認する。
+- 配布ZIPをリポジトリの外に展開し、同梱のソースだけで配布用の `.app` をビルドできることを確認する。完成した `.app` をFinderから起動し、内蔵の外部コマンドを使って変換できることを確認する。
+
+### GUIと再生
+
+- Finderから `.app` を起動し、初期表示が「ファイル」タブで「フォルマントを保持」がオンになっていることを確認する。ファイルをドロップして読み込み、タブを切り替えても対象と設定が維持されることを確認する。
 - 入力形式の各例を読み込めること、複数音声トラックの入力では音声トラックを選べることを確認する。元の拡張子で出力できない場合は、選んだ出力形式が保存名の拡張子と実際のファイル形式に反映される。
 - GUIで上書きをキャンセルした場合や変換に失敗した場合は既存ファイルが残り、変換に成功した場合は置き換わる。
 - YouTubeからH.264/AACのMP4を指定フォルダに取得し、GUIから同じフォルダに既定の `_shift.mp4` が付いたファイルを保存できる。

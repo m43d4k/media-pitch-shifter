@@ -185,6 +185,9 @@ class Window(QWidget):
         self.finder = QPushButton("Finderで開く")
         self.finder.hide()
         self.finder.clicked.connect(self.reveal_output)
+        self.close_button = QPushButton("閉じる")
+        self.close_button.hide()
+        self.close_button.clicked.connect(self.close)
         self.semitones.textChanged.connect(self.update_convert_button)
         self.postfix.textChanged.connect(self.update_convert_button)
         self.output_format.currentIndexChanged.connect(self.update_convert_button)
@@ -193,6 +196,7 @@ class Window(QWidget):
         convert_row.addStretch()
         convert_row.addWidget(self.convert)
         convert_row.addWidget(self.finder)
+        convert_row.addWidget(self.close_button)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.input_tabs)
@@ -374,6 +378,7 @@ class Window(QWidget):
         self.saved_output = output.absolute()
         self.finish_progress(f"変換完了：{output.name} を保存しました")
         self.finder.show()
+        self.close_button.show()
 
     def reveal_output(self):
         if self.saved_output is None:
@@ -397,6 +402,7 @@ class Window(QWidget):
         self.job = Job(operation, on_success, self)
         self.saved_output = None
         self.finder.hide()
+        self.close_button.hide()
         self.status.setText(message)
         if show_progress:
             self.progress.setRange(0, 0)

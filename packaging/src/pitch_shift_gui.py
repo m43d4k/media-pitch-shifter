@@ -1,6 +1,7 @@
 """macOS drag-and-drop interface for the shared pitch shifter."""
 
 import logging
+import subprocess
 import sys
 from functools import partial
 from html import escape
@@ -88,6 +89,7 @@ class Window(QWidget):
         self.source = None
         self.source_from_youtube = False
         self.job = None
+        self.saved_output = None
         self.setWindowTitle(APP_NAME)
         self.setAcceptDrops(True)
         self.setMinimumWidth(460)
@@ -180,9 +182,17 @@ class Window(QWidget):
         self.convert = QPushButton("変換")
         self.convert.setEnabled(False)
         self.convert.clicked.connect(self.convert_file)
+        self.finder = QPushButton("Finderで開く")
+        self.finder.hide()
+        self.finder.clicked.connect(self.reveal_output)
         self.semitones.textChanged.connect(self.update_convert_button)
         self.postfix.textChanged.connect(self.update_convert_button)
         self.output_format.currentIndexChanged.connect(self.update_convert_button)
+
+        convert_row = QHBoxLayout()
+        convert_row.addStretch()
+        convert_row.addWidget(self.convert)
+        convert_row.addWidget(self.finder)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.input_tabs)
@@ -191,7 +201,7 @@ class Window(QWidget):
         layout.addWidget(self.pitch_settings, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(self.status)
         layout.addWidget(self.progress)
-        layout.addWidget(self.convert, alignment=Qt.AlignmentFlag.AlignRight)
+        layout.addLayout(convert_row)
         self.input_tabs.currentChanged.connect(self.update_controls)
 
     def drop_path(self, event):
@@ -361,7 +371,22 @@ class Window(QWidget):
             self.status.setText(f"{stage} {percent}%")
 
     def saved(self, output, _result):
+        self.saved_output = output.absolute()
         self.finish_progress(f"変換完了：{output.name} を保存しました")
+        self.finder.show()
+
+    def reveal_output(self):
+        if self.saved_output is None:
+            return
+        try:
+            subprocess.run(
+                ["/usr/bin/open", "-R", str(self.saved_output)],
+                check=True, capture_output=True, text=True,
+            )
+        except subprocess.CalledProcessError as error:
+            self.show_error_dialog(error.stderr.strip() or str(error), "Finderで開けませんでした")
+        except OSError as error:
+            self.show_error_dialog(str(error), "Finderで開けませんでした")
 
     def finish_progress(self, message):
         self.progress.setRange(0, 100)
@@ -370,6 +395,8 @@ class Window(QWidget):
 
     def start_job(self, operation, on_success, message, *, show_progress=False):
         self.job = Job(operation, on_success, self)
+        self.saved_output = None
+        self.finder.hide()
         self.status.setText(message)
         if show_progress:
             self.progress.setRange(0, 0)
@@ -401,8 +428,11 @@ class Window(QWidget):
     def show_error(self, error):
         self.progress.hide()
         self.status.setText("処理に失敗しました")
+        self.show_error_dialog(error)
+
+    def show_error_dialog(self, error, title="処理エラー"):
         message, _, detail = error.partition("\n")
-        dialog = QMessageBox(QMessageBox.Icon.Critical, "処理エラー", "", parent=self)
+        dialog = QMessageBox(QMessageBox.Icon.Critical, title, "", parent=self)
         dialog.setTextFormat(Qt.TextFormat.PlainText)
         dialog.setText(message)
         if detail:

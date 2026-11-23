@@ -72,8 +72,6 @@ uv run python setup.py py2app -A
 
 ## リリース
 
-## リリース
-
 リポジトリのルートで以下を実行し、最新のコミット（HEAD）から配布用ZIPを作成する。作成したZIPをGitHub Releaseに添付する。
 
 ```bash

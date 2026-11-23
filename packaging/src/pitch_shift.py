@@ -42,6 +42,7 @@ class Media:
     audio_tracks: list[dict]
     has_video: bool
     format_names: list[str]
+    duration_us: int | None
 
     @property
     def output_codecs(self):
@@ -63,17 +64,45 @@ def find_command(name):
     return executable
 
 
+def check_command_status(name, returncode, stderr):
+    if returncode:
+        detail = stderr.strip()
+        message = f"{name} の処理に失敗しました（終了コード {returncode}）。"
+        raise ValueError(f"{message}\n{detail}" if detail else message)
+
+
 def run_command(name, *options, read_stdout=False):
     result = subprocess.run(
         [find_command(name), *options], stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE if read_stdout else subprocess.DEVNULL,
         stderr=subprocess.PIPE, encoding="utf-8", errors="replace",
     )
-    if result.returncode:
-        detail = result.stderr.strip()
-        message = f"{name} の処理に失敗しました（終了コード {result.returncode}）。"
-        raise ValueError(f"{message}\n{detail}" if detail else message)
+    check_command_status(name, result.returncode, result.stderr)
     return result.stdout
+
+
+def run_progress_command(name, *options, on_line, progress_on_stderr=False):
+    # Read the progress pipe continuously and keep diagnostics without a second pipe to drain.
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as diagnostics:
+        with subprocess.Popen(
+            [find_command(name), *options], stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL if progress_on_stderr else subprocess.PIPE,
+            stderr=subprocess.PIPE if progress_on_stderr else diagnostics,
+            encoding="utf-8", errors="replace",
+        ) as process:
+            lines = process.stderr if progress_on_stderr else process.stdout
+            try:
+                for line in lines:
+                    handled = on_line(line.strip())
+                    if progress_on_stderr and not handled:
+                        diagnostics.write(line)
+            except BaseException:
+                process.kill()
+                raise
+            returncode = process.wait()
+        if returncode:
+            diagnostics.seek(0)
+            check_command_status(name, returncode, diagnostics.read())
 
 
 def youtube_video_url(url):
@@ -145,8 +174,26 @@ def probe(path, *options):
     return json.loads(result)
 
 
-def ffmpeg(*options):
-    run_command("ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-xerror", *options)
+def ffmpeg(*options, on_progress, stage, total, progress_key="out_time_us"):
+    flags = ("-nostdin", "-hide_banner", "-loglevel", "error", "-xerror")
+    if on_progress is not None:
+        on_progress(stage, 0 if total else None)
+    if on_progress is None or not total:
+        run_command("ffmpeg", *flags, *options)
+        return
+
+    last_percent = 0
+
+    def report(line):
+        nonlocal last_percent
+        key, _, value = line.partition("=")
+        if key == progress_key and value.isdecimal():
+            percent = min(99, 100 * int(value) // total)
+            if percent > last_percent:
+                last_percent = percent
+                on_progress(stage, percent)
+
+    run_progress_command("ffmpeg", *flags, "-progress", "pipe:1", "-stats_period", "0.25", *options, on_line=report)
 
 
 def parse_semitones(value):
@@ -157,6 +204,14 @@ def parse_semitones(value):
     if not math.isfinite(semitones):
         raise ValueError("半音数は有限の数値を指定してください")
     return semitones
+
+
+def duration_us(metadata):
+    try:
+        duration = Fraction(metadata.get("duration") or "")
+    except ValueError:
+        return None
+    return round(duration * 1_000_000) if duration > 0 else None
 
 
 def inspect_media(source):
@@ -171,7 +226,8 @@ def inspect_media(source):
         stream["codec_type"] == "video" and not stream["disposition"].get("attached_pic")
         for stream in streams
     )
-    return Media(streams, tracks, has_video, media["format"]["format_name"].split(","))
+    container = media["format"]
+    return Media(streams, tracks, has_video, container["format_name"].split(","), duration_us(container))
 
 
 def pcm_shape(path):
@@ -195,7 +251,7 @@ def audio_start(source, track):
     return int(frames[0]["best_effort_timestamp"]) * Fraction(track["time_base"])
 
 
-def write_output(source, processed, output, streams, track, start, codec):
+def write_output(source, processed, output, streams, track, start, codec, *, on_progress, duration):
     index = track["index"]
     args = ["-i", str(source)]
     mapping = ["-map", "1:a:0"]
@@ -232,15 +288,41 @@ def write_output(source, processed, output, streams, track, start, codec):
         args.extend(("-rf64", "auto"))
     if output.suffix.lower() == ".m4v":
         args.extend(("-f", "mp4"))
-    ffmpeg(*args, str(output))
+    ffmpeg(*args, str(output), on_progress=on_progress, stage="出力ファイルを保存中", total=duration)
 
 
-def render_pitch(original, processed, semitones, preserve_formants):
-    options = ["--quiet", "--fine", "--time", "1", "--pitch", str(semitones)]
+def render_pitch(original, processed, semitones, preserve_formants, *, on_progress):
+    options = ["--fine", "--time", "1", "--pitch", str(semitones)]
     if preserve_formants:
         options.append("--formant")
     # The offline engine compensates its own processing delay.
-    run_command("rubberband", *options, str(original), str(processed))
+    if on_progress is None:
+        run_command("rubberband", "--quiet", *options, str(original), str(processed))
+        return
+
+    stages = {"Pass 1": "音声を解析中", "Pass 2": "ピッチを変換中"}
+    stage = None
+    last_percent = 0
+    on_progress(stages["Pass 1"], None)
+
+    def report(line):
+        nonlocal stage, last_percent
+        next_stage = stages.get(line.partition(":")[0])
+        if next_stage is not None:
+            stage = next_stage
+            last_percent = 0
+            on_progress(stage, 0)
+            return True
+        match = re.fullmatch(r"(\d{1,3})%", line)
+        if match and stage is not None:
+            percent = min(99, int(match[1]))
+            if percent > last_percent:
+                last_percent = percent
+                on_progress(stage, percent)
+            return True
+        return False
+
+    run_progress_command("rubberband", *options, str(original), str(processed), on_line=report, progress_on_stderr=True)
 
 
 def check_destination(source, output, replace_existing):
@@ -264,7 +346,20 @@ def check_destination(source, output, replace_existing):
         raise ValueError(f"上書きを確認した出力先が変更されました（{output}）")
 
 
-def shift(source, output, semitones, audio_track, preserve_formants, *, replace_existing=None):
+def decoded_pcm_bytes(track, duration, samples):
+    if samples is None:
+        try:
+            sample_rate = int(track.get("sample_rate", ""))
+        except (TypeError, ValueError):
+            return None
+        if not duration:
+            return None
+        samples = round(Fraction(duration * sample_rate, 1_000_000))
+    channels = track.get("channels") or 0
+    return samples * channels * 4
+
+
+def shift(source, output, semitones, audio_track, preserve_formants, *, replace_existing=None, on_progress=None):
     source, output = source.absolute(), output.absolute()
     semitones = parse_semitones(semitones)
     check_destination(source, output, replace_existing)
@@ -286,6 +381,7 @@ def shift(source, output, semitones, audio_track, preserve_formants, *, replace_
     )
     start = audio_start(source, track) if media.has_video or has_edit_length else None
     filters = []
+    samples = None
     if start is not None:
         # Keep gaps in the playback timeline by inserting silence, without stretching samples.
         filters.append("aresample=async=1:min_hard_comp=0.002")
@@ -302,17 +398,32 @@ def shift(source, output, semitones, audio_track, preserve_formants, *, replace_
         decode = ["-i", str(source), "-map", f"0:{track['index']}"]
         if filters:
             decode = ["-copyts", *decode, "-af", ",".join(filters)]
-        ffmpeg(*decode, "-c:a", "pcm_f32le", "-rf64", "auto", str(original))
+        decode_bytes = None
+        if on_progress is not None:
+            track_duration = duration_us(track)
+            if not track_duration and len(media.streams) == 1:
+                track_duration = media.duration_us
+            # The PCM byte count is independent of timestamps retained by -copyts.
+            decode_bytes = decoded_pcm_bytes(track, track_duration, samples)
+        ffmpeg(
+            *decode, "-c:a", "pcm_f32le", "-rf64", "auto", str(original),
+            on_progress=on_progress, stage="音声を抽出中", total=decode_bytes, progress_key="total_size",
+        )
         expected_shape = pcm_shape(original)
         processed = original
         if semitones:
             processed = work / "shifted.wav"
-            render_pitch(original, processed, semitones, preserve_formants)
+            render_pitch(original, processed, semitones, preserve_formants, on_progress=on_progress)
             if pcm_shape(processed) != expected_shape:
                 raise ValueError("変換後のサンプルレート、チャンネル数、またはサンプル数が入力と一致しません")
 
         staged = work / f"result{output.suffix.lower()}"
-        write_output(source, processed, staged, media.streams, track, start if media.has_video else None, codec)
+        rate, _, sample_count = expected_shape
+        output_duration = media.duration_us if media.has_video else round(Fraction(sample_count * 1_000_000, rate))
+        write_output(
+            source, processed, staged, media.streams, track, start if media.has_video else None, codec,
+            on_progress=on_progress, duration=output_duration,
+        )
         if replace_existing is None:
             # An output created during conversion must be left alone.
             os.link(staged, output)

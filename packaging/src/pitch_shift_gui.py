@@ -5,7 +5,7 @@ import sys
 from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import QStandardPaths, QThread, Qt
+from PySide6.QtCore import QStandardPaths, QThread, Qt, Signal, Slot
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
     QApplication,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QSizePolicy,
     QTabWidget,
@@ -54,6 +55,8 @@ class Job(QThread):
 
 
 class Window(QWidget):
+    conversion_progress = Signal(str, object)
+
     def __init__(self):
         super().__init__()
         self.source = None
@@ -143,6 +146,11 @@ class Window(QWidget):
         self.status = QLabel()
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
+        self.conversion_progress.connect(self.show_conversion_progress)
+        self.progress = QProgressBar()
+        self.progress.setAccessibleName("変換の進捗")
+        self.progress.setTextVisible(False)
+        self.progress.hide()
         self.convert = QPushButton("変換")
         self.convert.setEnabled(False)
         self.convert.clicked.connect(self.convert_file)
@@ -156,6 +164,7 @@ class Window(QWidget):
         layout.addWidget(self.source_label)
         layout.addWidget(pitch_settings, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(self.status)
+        layout.addWidget(self.progress)
         layout.addWidget(self.convert, alignment=Qt.AlignmentFlag.AlignRight)
 
     def drop_path(self, event):
@@ -307,16 +316,31 @@ class Window(QWidget):
 
         operation = partial(
             shift, self.source, output, semitones, self.tracks.currentIndex(),
-            self.formants.isChecked(), replace_existing=existing,
+            self.formants.isChecked(), replace_existing=existing, on_progress=self.conversion_progress.emit,
         )
-        self.start_job(operation, partial(self.saved, output), "変換中…")
+        self.start_job(operation, partial(self.saved, output), "変換を準備中…", show_progress=True)
+
+    @Slot(str, object)
+    def show_conversion_progress(self, stage, percent):
+        if percent is None:
+            self.progress.setRange(0, 0)
+            self.status.setText(f"{stage}…")
+        else:
+            self.progress.setRange(0, 100)
+            self.progress.setValue(percent)
+            self.status.setText(f"{stage} {percent}%")
 
     def saved(self, output, _result):
-        self.status.setText(f"保存しました：{output.name}")
+        self.progress.setRange(0, 100)
+        self.progress.setValue(100)
+        self.status.setText(f"変換完了：{output.name} を保存しました")
 
-    def start_job(self, operation, on_success, message):
+    def start_job(self, operation, on_success, message, *, show_progress=False):
         self.job = Job(operation, on_success, self)
         self.status.setText(message)
+        if show_progress:
+            self.progress.setRange(0, 0)
+        self.progress.setVisible(show_progress)
         self.set_controls_enabled(False)
         self.update_convert_button()
         self.job.finished.connect(self.finish_job)
@@ -340,6 +364,7 @@ class Window(QWidget):
         self.update_download_button()
 
     def show_error(self, error):
+        self.progress.hide()
         self.status.setText("処理に失敗しました")
         message, _, detail = error.partition("\n")
         dialog = QMessageBox(QMessageBox.Icon.Critical, "処理エラー", "", parent=self)

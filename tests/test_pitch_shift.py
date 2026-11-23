@@ -77,6 +77,39 @@ class PitchShiftTest(unittest.TestCase):
         crossings = sum(a <= 0 < b for a, b in zip(middle, middle[1:]))
         self.assertAlmostEqual(2 * crossings, 440 * 2 ** (3.5 / 12), delta=4)
 
+    def test_wav_reports_measured_progress_for_each_stage(self):
+        output = self.folder / "pitched.wav"
+        updates = {}
+
+        def report(stage, percent):
+            self.assertFalse(output.exists())
+            percentages = updates.setdefault(stage, [])
+            if percent is not None:
+                percentages.append(percent)
+
+        pitch_shift.shift(self.audio, output, 2.5, 0, True, on_progress=report)
+
+        self.assertTrue(output.is_file())
+        self.assertEqual(list(updates), [
+            "音声を抽出中", "音声を解析中", "ピッチを変換中", "出力ファイルを保存中",
+        ])
+        for percentages in updates.values():
+            self.assertEqual(percentages, sorted(set(percentages)))
+            self.assertEqual(percentages[0], 0)
+            self.assertTrue(any(0 < percent < 100 for percent in percentages))
+            self.assertLess(percentages[-1], 100)
+
+    def test_zero_semitones_reports_extraction_and_saving_only(self):
+        output = self.folder / "unchanged.wav"
+        stages = set()
+
+        def report(stage, _percent):
+            stages.add(stage)
+
+        pitch_shift.shift(self.audio, output, 0, 0, False, on_progress=report)
+
+        self.assertEqual(stages, {"音声を抽出中", "出力ファイルを保存中"})
+
     def test_video_keeps_delayed_audio_sync_and_other_streams(self):
         source = self.folder / "original.mkv"
         output = self.folder / "pitched.mkv"

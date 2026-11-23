@@ -86,6 +86,7 @@ class Window(QWidget):
     def __init__(self):
         super().__init__()
         self.source = None
+        self.source_from_youtube = False
         self.job = None
         self.setWindowTitle(APP_NAME)
         self.setAcceptDrops(True)
@@ -151,8 +152,8 @@ class Window(QWidget):
         self.formants = QCheckBox()
         self.formants.setChecked(True)
 
-        pitch_settings = QWidget()
-        self.form = QFormLayout(pitch_settings)
+        self.pitch_settings = QWidget()
+        self.form = QFormLayout(self.pitch_settings)
         self.form.setContentsMargins(0, 0, 0, 0)
         self.form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -187,10 +188,11 @@ class Window(QWidget):
         layout.addWidget(self.input_tabs)
         layout.addSpacing(14)
         layout.addWidget(self.source_label)
-        layout.addWidget(pitch_settings, alignment=Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(self.pitch_settings, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(self.status)
         layout.addWidget(self.progress)
         layout.addWidget(self.convert, alignment=Qt.AlignmentFlag.AlignRight)
+        self.input_tabs.currentChanged.connect(self.update_controls)
 
     def drop_path(self, event):
         if self.job is not None or self.input_tabs.currentWidget() is not self.drop_tab:
@@ -216,6 +218,7 @@ class Window(QWidget):
 
     def clear_media(self):
         self.source = None
+        self.source_from_youtube = False
         self.source_label.setText("")
         self.source_label.hide()
         self.tracks.clear()
@@ -258,10 +261,10 @@ class Window(QWidget):
     def load_download(self, result):
         path, media = result
         self.clear_media()
-        self.load_media(path, media)
+        self.load_media(path, media, from_youtube=True)
         self.finish_progress(f"ダウンロード完了：{path}")
 
-    def load_media(self, path, media):
+    def load_media(self, path, media, *, from_youtube=False):
         for index, track in enumerate(media.audio_tracks):
             tags = track.get("tags", {})
             description = " · ".join(
@@ -279,6 +282,7 @@ class Window(QWidget):
         self.source_label.show()
         self.status.setText("")
         self.source = path
+        self.source_from_youtube = from_youtube
 
     def output_postfix(self):
         postfix = self.postfix.text()
@@ -299,7 +303,7 @@ class Window(QWidget):
         self.convert.setEnabled(False)
         self.postfix.setToolTip("")
         self.semitones.setToolTip("")
-        if self.source is None or self.job is not None:
+        if self.source is None or not self.pitch_settings.isEnabled():
             return
         try:
             self.output_postfix()
@@ -370,8 +374,7 @@ class Window(QWidget):
         if show_progress:
             self.progress.setRange(0, 0)
         self.progress.setVisible(show_progress)
-        self.set_controls_enabled(False)
-        self.update_convert_button()
+        self.update_controls()
         self.job.finished.connect(self.finish_job)
         self.job.start()
 
@@ -379,18 +382,21 @@ class Window(QWidget):
         job, self.job = self.job, None
         job.wait()
         job.deleteLater()
-        self.set_controls_enabled(True)
         if job.error is None:
             job.on_success(job.result)
-        else:
+        self.update_controls()
+        if job.error is not None:
             self.show_error(job.error)
-        self.update_convert_button()
 
-    def set_controls_enabled(self, enabled):
-        self.choose_folder.setEnabled(enabled)
-        for widget in (self.youtube_url, self.semitones, self.postfix, self.output_format, self.tracks, self.formants):
-            widget.setEnabled(enabled)
+    def update_controls(self):
+        idle = self.job is None
+        self.choose_folder.setEnabled(idle)
+        self.youtube_url.setEnabled(idle)
+        self.pitch_settings.setEnabled(
+            idle and (self.input_tabs.currentWidget() is self.drop_tab or self.source_from_youtube)
+        )
         self.update_download_button()
+        self.update_convert_button()
 
     def show_error(self, error):
         self.progress.hide()

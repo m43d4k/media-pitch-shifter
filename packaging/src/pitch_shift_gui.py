@@ -3,9 +3,10 @@
 import logging
 import sys
 from functools import partial
+from html import escape
 from pathlib import Path
 
-from PySide6.QtCore import QStandardPaths, QThread, Qt, Signal, Slot
+from PySide6.QtCore import QSize, QStandardPaths, QThread, Qt, Signal, Slot
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
     QApplication,
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSizePolicy,
+    QStylePainter,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -34,6 +36,30 @@ DROP_HINT = (
     "動画  .mp4 .m4v .mov .mkv .webm .avi .ts .mts .m2ts .mpg .mpeg\n"
     "音声  .wav .aif .aiff .flac .m4a .aac .mp3 .ogg .opus .wma"
 )
+
+
+class ElidedLabel(QLabel):
+    def __init__(self):
+        super().__init__()
+        self.setTextFormat(Qt.TextFormat.PlainText)
+        policy = QSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        policy.setRetainSizeWhenHidden(True)
+        self.setSizePolicy(policy)
+
+    def sizeHint(self):
+        return QSize(0, self.fontMetrics().height())
+
+    def setText(self, text):
+        super().setText(" ".join(text.splitlines()))
+        self.setToolTip(f'<qt style="white-space: pre-wrap">{escape(text)}</qt>' if text else "")
+
+    def paintEvent(self, event):
+        rect = self.contentsRect()
+        text = self.fontMetrics().elidedText(self.text(), Qt.TextElideMode.ElideMiddle, rect.width())
+        painter = QStylePainter(self)
+        painter.drawItemText(
+            rect, self.alignment().value, self.palette(), self.isEnabled(), text, self.foregroundRole(),
+        )
 
 
 class Job(QThread):
@@ -139,17 +165,16 @@ class Window(QWidget):
         self.form.setRowVisible(self.output_format, False)
         self.form.setRowVisible(self.tracks, False)
 
-        self.source_label = QLabel()
-        self.source_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.source_label.setWordWrap(True)
+        self.source_label = ElidedLabel()
         self.source_label.hide()
-        self.status = QLabel()
-        self.status.setTextFormat(Qt.TextFormat.PlainText)
-        self.status.setWordWrap(True)
+        self.status = ElidedLabel()
         self.job_progress.connect(self.show_job_progress)
         self.progress = QProgressBar()
         self.progress.setAccessibleName("処理の進捗")
         self.progress.setTextVisible(False)
+        progress_policy = self.progress.sizePolicy()
+        progress_policy.setRetainSizeWhenHidden(True)
+        self.progress.setSizePolicy(progress_policy)
         self.progress.hide()
         self.convert = QPushButton("変換")
         self.convert.setEnabled(False)
@@ -191,7 +216,7 @@ class Window(QWidget):
 
     def clear_media(self):
         self.source = None
-        self.source_label.clear()
+        self.source_label.setText("")
         self.source_label.hide()
         self.tracks.clear()
         self.form.setRowVisible(self.tracks, False)
@@ -252,7 +277,7 @@ class Window(QWidget):
         self.form.setRowVisible(self.output_format, needs_format)
         self.source_label.setText(f"入力ファイル：{path.name}")
         self.source_label.show()
-        self.status.clear()
+        self.status.setText("")
         self.source = path
 
     def output_postfix(self):

@@ -4,7 +4,7 @@
 
 ## macOSアプリ
 
-[GitHub Releases](https://github.com/m43d4k/media-pitch-shifter/releases)で配布用ビルドキットを公開。ビルド手順と操作方法は同梱のREADMEを参照。
+[GitHub Releases](https://github.com/m43d4k/media-pitch-shifter/releases)で配布用ビルドキットを公開。ビルド手順と操作方法は同梱の [README](packaging/README.md) を参照。
 
 ## GUIの使い方
 
@@ -20,6 +20,8 @@
 必要環境：macOS、`uv`、FFmpeg（`ffmpeg`・`ffprobe`）、Deno 2.3以降。
 
 ### Python依存ライブラリ
+
+リポジトリのルートで実行する。
 
 ```sh
 uv sync
@@ -70,7 +72,19 @@ uv run python setup.py py2app -A
 
 ## リリース
 
-`packaging/`をZIP化し、GitHub Releaseに添付する。
+## リリース
+
+リポジトリのルートで以下を実行し、最新のコミット（HEAD）から配布用ZIPを作成する。作成したZIPをGitHub Releaseに添付する。
+
+```bash
+git archive --format=zip \
+  --prefix=media-pitch-shifter-build/ \
+  --add-file=packaging/README.md \
+  --output=media-pitch-shifter-build.zip \
+  HEAD \
+  pitch_shift.py pitch_shift_gui.py assets pyproject.toml uv.lock \
+  packaging/build-macos.sh packaging/macos-build.conf
+```
 
 ## 関連ドキュメント
 

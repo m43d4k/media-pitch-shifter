@@ -104,16 +104,16 @@ GUI・CLIともに、正の半音数でピッチを上げ、負の半音数で�
 
 ## ビルドと配布
 
-開発と配布で同じソースを使う。`packaging/src/` に `pitch_shift_gui.py`、`pitch_shift.py`、`assets/AppIcon.icns`、`pyproject.toml`、`uv.lock` を置き、ここを `uv` のプロジェクトとする。
+リポジトリのルートを `uv` のプロジェクトとし、`pyproject.toml` と `uv.lock` を置く。開発とテストではルートの `.venv` を使う。
 
 ### 開発用ビルド
 
-リポジトリルートの `setup.py` は `packaging/src/` のGUIとアイコンを参照する。ルートから `uv run python setup.py py2app -A` を実行してエイリアス版を作る。エイリアス版は開発中のソースと仮想環境を参照し、Pythonソースの変更はアプリの再起動で反映される。[セットアップ](README.md#セットアップ)
+ルートから `uv run python setup.py py2app -A` を実行してエイリアス版を作る。エイリアス版はルートのGUIソースと仮想環境を参照し、Pythonソースの変更はアプリの再起動で反映される。[開発環境](README.md#開発環境)
 
 ### 配布用ビルド
 
-- `git archive` でリリース対象コミットの `packaging/` をZIPにまとめ、GitHub Releaseに添付する。ZIPには配布用の `README.md`、`build-macos.sh`、`macos-build.conf`、`src/` が入る。
-- Apple Silicon搭載のmacOS 14以降のMacでZIPを展開し、同梱の `build-macos.sh` を実行する。スクリプトは隣の `src/` とそのロックファイルを使い、PyInstallerで `dist/` 以下に `Media Pitch Shifter.app` を作る。
+- `git archive` で `pitch_shift.py`、`pitch_shift_gui.py`、`assets/`、`pyproject.toml`、`uv.lock`、配布手順と設定が入った `packaging/` をZIPにまとめ、GitHub Releaseに添付する。[リリース手順](README.md#リリース)
+- Apple Silicon搭載のmacOS 14以降のMacでZIPを展開し、`bash packaging/build-macos.sh` を実行する。スクリプトは展開したプロジェクトのロックファイルから一時的なPython環境を作成し、PyInstallerで `packaging/dist/` 以下に `Media Pitch Shifter.app` を作る。
 - Pythonのバージョンは `macos-build.conf` で指定する。ビルドに必要な依存関係と外部ツールはビルド時に取得し、スクリプトが取得するツールのアーカイブは設定されたSHA-256で検証する。
 
 ## 受け入れ基準
@@ -122,7 +122,7 @@ GUI・CLIともに、正の半音数でピッチを上げ、負の半音数で�
 
 ### ビルド
 
-- 開発用のエイリアス版を作り、`packaging/src/` のPythonソースを編集した後、アプリの再起動で変更が反映されることを確認する。
+- 開発用のエイリアス版を作り、ルートのPythonソースを編集した後、アプリの再起動で変更が反映されることを確認する。
 - 配布ZIPをリポジトリの外に展開し、同梱のソースだけで配布用の `.app` をビルドできることを確認する。完成した `.app` をFinderから起動し、内蔵の外部コマンドを使って変換できることを確認する。
 
 ### GUIと再生

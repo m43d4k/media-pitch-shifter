@@ -55,7 +55,7 @@ def find_command(name):
         paths = [str(contents / "Helpers"), str(contents / "Resources" / "yt-dlp")]
     else:
         # Finder launches apps with a minimal PATH. Search local installs too.
-        project_bin = Path(__file__).resolve().parents[2] / ".venv/bin"
+        project_bin = Path(__file__).resolve().parent / ".venv/bin"
         paths = [*os.get_exec_path(), str(Path(sys.prefix) / "bin"),
                  str(project_bin), "/opt/homebrew/bin", "/usr/local/bin"]
     executable = shutil.which(name, path=os.pathsep.join(paths))

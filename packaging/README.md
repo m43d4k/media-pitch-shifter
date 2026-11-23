@@ -11,19 +11,17 @@
 
 ## ビルド手順
 
-`build-macos.sh` を実行する。
-
-例：
+packaging/build-macos.sh を実行する。
 
 ```bash
-bash path/to/build-macos.sh
+bash path/to/packaging/build-macos.sh
 ```
 
 事前の環境構築は不要。  
 
-- 完了すると`build-macos.sh` と同じフォルダの `dist` に `Media Pitch Shifter.app` が作成される。
+- 完了すると `packaging/dist/` 以下に `Media Pitch Shifter.app` が作成される。
 - ビルド後、動作に必要なのは `Media Pitch Shifter.app` のみ。
-- `Media Pitch Shifter.app` を任意の場所に移動すれば、packaging フォルダは削除して構わない。
+- `Media Pitch Shifter.app` を任意の場所に移動すれば、media-pitch-shifter-buildフォルダは削除して構わない。
 
 ## アプリの使い方
 

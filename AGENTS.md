@@ -7,10 +7,10 @@
 
 ## 検証
 
-CLI、共通変換処理、YouTube 動画の取得に関する回帰テストは次のコマンドで実行する。
+CLI、共通変換処理、YouTube 動画の取得に関する回帰テストはリポジトリのルートで実行する。
 
 ```sh
-uv run --directory packaging/src python -m unittest discover -s ../../tests -v
+uv run python -m unittest discover -s tests -v
 ```
 
 GUI や再生で確認する項目は仕様書に記載する。 [受け入れ基準](SPEC.md#受け入れ基準)

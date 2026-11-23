@@ -18,7 +18,8 @@ os_version=$(sw_vers -productVersion)
 
 CDPATH= cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")"
 script_dir=$PWD
-[[ $# -eq 0 ]] || fail "使い方: /bin/bash build-macos.sh"
+project_dir=$(dirname -- "$script_dir")
+[[ $# -eq 0 ]] || fail "使い方: /bin/bash packaging/build-macos.sh"
 
 phase=ビルド設定の確認
 config_file="$script_dir/macos-build.conf"
@@ -46,9 +47,8 @@ for key in "${config_keys[@]}"; do
 done
 
 phase=ソースの確認
-source_dir="$script_dir/src"
 for file in pyproject.toml uv.lock pitch_shift_gui.py pitch_shift.py assets/AppIcon.icns; do
-    [[ -f "$source_dir/$file" ]] || fail "同梱の src/$file がありません。配布 ZIP をフォルダごと展開してください。"
+    [[ -f "$project_dir/$file" ]] || fail "同梱の $file がありません。配布 ZIP をフォルダごと展開してください。"
 done
 
 phase=作業フォルダの準備
@@ -92,7 +92,7 @@ export PATH="$work/bin:$PATH"
 
 phase=Python環境の作成
 printf '%s\n' "$phase"
-cd -- "$source_dir"
+cd -- "$project_dir"
 uv --no-config sync --locked --only-group macos-build --no-build --managed-python \
     --python "$PYTHON_VERSION"
 
@@ -101,9 +101,9 @@ printf '%s\n' "$phase"
 app_name='Media Pitch Shifter'
 "$UV_PROJECT_ENVIRONMENT/bin/python" -m PyInstaller --log-level WARN \
     --windowed --onedir --name "$app_name" --target-arch arm64 \
-    --osx-bundle-identifier local.media-pitch-shifter --icon "$source_dir/assets/AppIcon.icns" \
+    --osx-bundle-identifier local.media-pitch-shifter --icon "$project_dir/assets/AppIcon.icns" \
     --distpath "$work/output" --workpath "$work/pyinstaller-work" --specpath "$work" \
-    "$source_dir/pitch_shift_gui.py"
+    "$project_dir/pitch_shift_gui.py"
 
 phase=外部コマンドの取得
 printf '%s\n' "$phase"
